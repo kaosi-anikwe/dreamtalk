@@ -1,0 +1,3 @@
+__pycache__
+checkpoints/denoising_network.pth
+checkpoints/renderer.pt
