@@ -10,6 +10,12 @@ RUN conda create -n dreamtalk python=3.7.0 && \
 
 SHELL ["/bin/bash", "--login", "-c"]
 
+# Set the working directory to /app
+WORKDIR /app
+
+# Copy the current directory contents into the container at /app
+COPY . /app
+
 # Install dependencies
 RUN conda activate dreamtalk && \
     pip install -r requirements.txt && \
@@ -18,12 +24,6 @@ RUN conda activate dreamtalk && \
     pip install urllib3==1.26.6 && \
     pip install transformers==4.28.1 && \
     pip install dlib
-
-# Set the working directory to /app
-WORKDIR /app
-
-# Copy the current directory contents into the container at /app
-COPY . /app
 
 # Run your application script
 CMD [ "python", "-u", "/serverless.py" ]
