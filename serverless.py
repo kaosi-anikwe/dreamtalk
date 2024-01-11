@@ -46,6 +46,7 @@ audio_feat_path = ""
 def download_file(url):
     try:
         response = requests.get(url)
+        print(f"STATUS CODE: {response.status_code}")
         response.raise_for_status()  # Raise an HTTPError for bad responses
 
         _, file_extension = os.path.splitext(url)
@@ -54,6 +55,7 @@ def download_file(url):
         with open(temp_file.name, 'wb') as file:
             file.write(response.content)
 
+        print(f"FILENAME: {temp_file.name}")
         return temp_file.name
     except requests.exceptions.RequestException as e:
         print(f"Error downloading file: {e}")
@@ -174,21 +176,24 @@ def inference_one_video(
 
 
 def handler(job):
+    request = job.get("input")
+    audio_url = request.get("audio_url")
+    wav_path = download_file(audio_url)
+    image_url = request.get("image_url")
+    image_path = download_file(image_url)
+    if not wav_path or not image_path:
+        return {
+            "error": "Failed to download image or audio."
+        }
+    img_crop = request.get("img_crop", True)
+    style_clip_path = request.get("style_clip_path", "data/style_clip/3DMM/M030_front_neutral_level1_001.mat")
+    pose_path = request.get("pose_path", "data/pose/RichardShelby_front_neutral_level1_001.mat")
+    max_gen_len = request.get("max_gen_len", 30)
+    cfg_scale = request.get("cfg_scale", 1.0)
+    output_name = uuid.uuid4().hex
+    device = request.get("device", "cuda")
+
     try:
-        request = job.get("input")
-        audio_url = request.get("audio_url")
-        wav_path = "data/audio/acknowledgement_english.m4a" # TODO: download audio
-        image_url = request.get("image_url")
-        image_path = "data/src_img/uncropped/male_face.png" # TODO: download image
-        img_crop = request.get("img_crop", True)
-        style_clip_path = request.get("style_clip_path", "")
-        pose_path = request.get("pose_path", "")
-        max_gen_len = request.get("max_gen_len", 1000)
-        cfg_scale = request.get("cfg_scale", 1.0)
-        output_name = uuid.uuid4().hex
-        device = request.get("device", "cuda")
-
-
         if device == "cuda" and not torch.cuda.is_available():
             print("CUDA is not available, set --device=cpu to use CPU.")
             exit(1)
@@ -229,6 +234,7 @@ def handler(job):
                 inputs.input_values.to(device), return_dict=False
             )[0]
 
+        global audio_feat_path
         audio_feat_path = os.path.join(tmp_dir, f"{output_name}_wav2vec.npy")
         np.save(audio_feat_path, audio_embedding[0].cpu().numpy())
 
@@ -277,7 +283,11 @@ def handler(job):
             blob.make_public()
             blob_url = blob.public_url
 
-            print(f"URL: {blob_url}")
+            os.remove(output_video_path)
+            if os.path.exists(wav_path):
+                os.remove(wav_path)
+            if os.path.exists(image_path):
+                os.remove(image_path)
 
             return {
                 "videoURL": blob_url
@@ -287,6 +297,8 @@ def handler(job):
             "error": str(e),
             "traceback": traceback.format_exc()
         }
-
+    finally:
+        if os.path.exists(f"tmp/{output_name}"):
+            shutil.rmtree(f"tmp/{output_name}")
 
 runpod.serverless.start({"handler": handler})
