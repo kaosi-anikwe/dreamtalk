@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import uuid
 import shutil
 import subprocess
 
@@ -21,6 +22,9 @@ from core.utils import (
     get_wav2vec_audio_window,
 )
 from generators.utils import get_netG, render_video
+
+
+audio_feat_path = ""
 
 
 @torch.no_grad()
@@ -123,57 +127,37 @@ def inference_one_video(
     return output_path
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="inference for demo")
-    parser.add_argument("--wav_path", type=str, default="", help="path for wav")
-    parser.add_argument("--image_path", type=str, default="", help="path for image")
-    parser.add_argument("--disable_img_crop", dest="img_crop", action="store_false")
-    parser.set_defaults(img_crop=True)
+def handler(request):
+    params = request.get("input")
+    audio_url = params.get("audio_url")
+    wav_path = "" # TODO: download audio
+    image_url = params.get("image_url")
+    image_path = "" # TODO: download image
+    img_crop = params.get("img_crop", True)
+    style_clip_path = params.get("style_clip_path", "")
+    pose_path = params.get("pose_path", "")
+    max_gen_len = params.get("max_gen_len", 1000)
+    cfg_scale = params.get("cfg_scale", 1.0)
+    output_name = uuid.uuid4().hex
+    device = params.get("device", "cuda")
 
-    parser.add_argument(
-        "--style_clip_path", type=str, default="", help="path for style_clip_mat"
-    )
-    parser.add_argument("--pose_path", type=str, default="", help="path for pose")
-    parser.add_argument(
-        "--max_gen_len",
-        type=int,
-        default=1000,
-        help="The maximum length (seconds) limitation for generating videos",
-    )
-    parser.add_argument(
-        "--cfg_scale",
-        type=float,
-        default=1.0,
-        help="The scale of classifier-free guidance",
-    )
-    parser.add_argument(
-        "--output_name",
-        type=str,
-        default="test",
-    )
-    parser.add_argument(
-        "--device",
-        type=str,
-        default="cuda",
-    )
-    args = parser.parse_args()
 
-    if args.device == "cuda" and not torch.cuda.is_available():
+    if device == "cuda" and not torch.cuda.is_available():
         print("CUDA is not available, set --device=cpu to use CPU.")
         exit(1)
 
-    device = torch.device(args.device)
+    device = torch.device(device)
 
     cfg = get_cfg_defaults()
-    cfg.CF_GUIDANCE.SCALE = args.cfg_scale
+    cfg.CF_GUIDANCE.SCALE = cfg_scale
     cfg.freeze()
 
-    tmp_dir = f"tmp/{args.output_name}"
+    tmp_dir = f"tmp/{output_name}"
     os.makedirs(tmp_dir, exist_ok=True)
 
     # get audio in 16000Hz
-    wav_16k_path = os.path.join(tmp_dir, f"{args.output_name}_16K.wav")
-    command = f"ffmpeg -y -i {args.wav_path} -async 1 -ac 1 -vn -acodec pcm_s16le -ar 16000 {wav_16k_path}"
+    wav_16k_path = os.path.join(tmp_dir, f"{output_name}_16K.wav")
+    command = f"ffmpeg -y -i {wav_path} -async 1 -ac 1 -vn -acodec pcm_s16le -ar 16000 {wav_16k_path}"
     subprocess.run(command.split())
 
     # get wav2vec feat from audio
@@ -198,35 +182,35 @@ if __name__ == "__main__":
             inputs.input_values.to(device), return_dict=False
         )[0]
 
-    audio_feat_path = os.path.join(tmp_dir, f"{args.output_name}_wav2vec.npy")
+    audio_feat_path = os.path.join(tmp_dir, f"{output_name}_wav2vec.npy")
     np.save(audio_feat_path, audio_embedding[0].cpu().numpy())
 
     # get src image
     src_img_path = os.path.join(tmp_dir, "src_img.png")
-    if args.img_crop:
-        crop_src_image(args.image_path, src_img_path, 0.4)
+    if img_crop:
+        crop_src_image(image_path, src_img_path, 0.4)
     else:
-        shutil.copy(args.image_path, src_img_path)
+        shutil.copy(image_path, src_img_path)
 
     with torch.no_grad():
         # get diff model and load checkpoint
         diff_net = get_diff_net(cfg, device).to(device)
         # generate face motion
-        face_motion_path = os.path.join(tmp_dir, f"{args.output_name}_facemotion.npy")
+        face_motion_path = os.path.join(tmp_dir, f"{output_name}_facemotion.npy")
         inference_one_video(
             cfg,
             audio_feat_path,
-            args.style_clip_path,
-            args.pose_path,
+            style_clip_path,
+            pose_path,
             face_motion_path,
             diff_net,
             device,
-            max_audio_len=args.max_gen_len,
+            max_audio_len=max_gen_len,
         )
         # get renderer
         renderer = get_netG("checkpoints/renderer.pt", device)
         # render video
-        output_video_path = f"output_video/{args.output_name}.mp4"
+        output_video_path = f"output_video/{output_name}.mp4"
         render_video(
             renderer,
             src_img_path,
@@ -237,12 +221,3 @@ if __name__ == "__main__":
             fps=25,
             no_move=False,
         )
-
-        # add watermark
-        # if you want to generate videos with no watermark (for evaluation), remove this code block.
-        no_watermark_video_path = f"{output_video_path}-no_watermark.mp4"
-        shutil.move(output_video_path, no_watermark_video_path)
-        os.system(
-            f'ffmpeg -y -i {no_watermark_video_path} -vf  "movie=media/watermark.png,scale= 120: 36[watermask]; [in] [watermask] overlay=140:220 [out]" {output_video_path}'
-        )
-        os.remove(no_watermark_video_path)
