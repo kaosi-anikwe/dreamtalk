@@ -26,4 +26,4 @@ RUN conda activate dreamtalk && \
     pip install dlib
 
 # Run your application script
-CMD [ "python", "-u", "/serverless.py" ]
+CMD [ "python", "-u", "/app/serverless.py" ]
