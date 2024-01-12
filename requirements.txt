@@ -6,6 +6,7 @@ scikit-image==0.19.3
 scikit-learn==1.0.2
 PyYAML==6.0
 Pillow
+typing_extensions==4.7.1
 numpy==1.21.5
 opencv-python==4.4.0.46
 imageio==2.18.0
