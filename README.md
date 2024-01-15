@@ -1,4 +1,5 @@
 <h2 align="center">DreamTalk: When Expressive Talking Head Generation <br> Meets Diffusion Probabilistic Models</h2>
+<h3 align="center">Forked from <a href="https://github.com/ali-vilab/dreamtalk">Dreamtlak</a></h3>
 <p align="center">
   <a href='https://dreamtalk-project.github.io/'><img src='https://img.shields.io/badge/Project-Page-Green'></a> <a href='https://arxiv.org/abs/2312.09767'><img src='https://img.shields.io/badge/Paper-Arxiv-red'></a> <a href='https://youtu.be/VF4vlE6ZqWQ'><img src='https://badges.aleen42.com/src/youtube.svg'></a>
 </p>
